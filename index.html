@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VitalGuard — Entrar</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-mark">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M10 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 10c4.4 0 8 1.8 8 4v1H2v-1c0-2.2 3.6-4 8-4z" fill="#185FA5"/></svg>
+      </div>
+      <span class="auth-logo-text">VitalGuard</span>
+    </div>
+    <h1 class="auth-title">Bem-vindo</h1>
+    <p class="auth-sub">Inicie sessão para continuar</p>
+
+    <form id="login-form">
+      <div class="auth-field">
+        <label for="email">Email</label>
+        <input type="email" id="email" placeholder="exemplo@hospital.pt" required autocomplete="email">
+      </div>
+      <div class="auth-field">
+        <label for="password">Palavra-passe</label>
+        <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <p class="auth-error" id="auth-error"></p>
+      <button class="auth-btn" type="submit" id="login-btn">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+  import { login, getSession } from './js/auth.js';
+
+  // Already logged in? Go straight to dashboard
+  getSession().then(s => {
+    if (s) window.location.href = 'dashboard.html';
+  });
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    const err = document.getElementById('auth-error');
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    btn.disabled = true;
+    btn.textContent = 'A entrar...';
+    err.classList.remove('show');
+
+    try {
+      await login(email, password);
+      window.location.href = 'dashboard.html';
+    } catch (e) {
+      err.textContent = 'Email ou palavra-passe incorrectos.';
+      err.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+    }
+  });
+</script>
+</body>
+</html>
