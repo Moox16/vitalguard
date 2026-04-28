@@ -1,7 +1,7 @@
 // js/db.js
 // All Supabase database interactions
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 // ─── Replace these with your actual Supabase project values ───
 const SUPABASE_URL = "https://ektychwtekgekblxtmnx.supabase.co";
