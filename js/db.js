@@ -4,7 +4,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // ─── Replace these with your actual Supabase project values ───
-const SUPABASE_URL = "https://ektychwtekgekblxtmnx.supabase.co/rest/v1/";
+const SUPABASE_URL = "https://ektychwtekgekblxtmnx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrdHljaHd0ZWtnZWtibHh0bW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MDIzNjIsImV4cCI6MjA5Mjk3ODM2Mn0.ucwNoAQPTndySkM-YKWabzyxrf6gFphOeLUJIJVwmI8";
 // ──────────────────────────────────────────────────────────────
 
