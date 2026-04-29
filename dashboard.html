@@ -11,7 +11,7 @@
 
 <div class="shell">
 
-  <!-- ─── Sidebar ─── -->
+  <!-- ─── Sidebar (desktop only) ─── -->
   <aside class="sidebar">
     <div class="sb-logo">
       <div class="sb-logo-mark">
@@ -62,6 +62,9 @@
           <svg viewBox="0 0 16 16" fill="none"><path d="M8 1a5 5 0 0 1 5 5v2.5l1 2H2l1-2V6a5 5 0 0 1 5-5z" stroke="#888780" stroke-width="1.3" fill="none"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0" stroke="#888780" stroke-width="1.3"/></svg>
           <span class="bell-badge" id="bell-badge" style="display:none"></span>
         </div>
+        <button class="icon-btn" id="logout-btn-mobile" title="Terminar sessão" style="display:none">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M10 11l3-3-3-3M13 8H6" stroke="#888780" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </div>
     </header>
 
@@ -106,24 +109,21 @@
 
       <!-- ══ SCREEN: Tempo Real ══ -->
       <div class="screen" id="screen-realtime">
-
-        <!-- BLE connect bar -->
         <div class="card" style="margin-bottom:16px;padding:14px 18px;">
-          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <select class="field-input" id="patient-selector" style="width:220px;cursor:pointer" onchange="document.app_selectedPatientId = this.value">
+          <div id="ble-bar" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <select class="field-input" id="patient-selector" style="width:220px;cursor:pointer">
               <option value="">Seleccionar utente...</option>
             </select>
             <button class="ble-btn" id="ble-btn">
               <span class="ble-dot"></span>
               <span id="ble-label">Ligar dispositivo ESP32</span>
             </button>
-            <span style="font-size:12px;color:var(--gray-400);margin-left:auto">
-              💡 Requer Chrome ou Edge com Web Bluetooth activado
+            <span class="ble-hint" style="font-size:12px;color:var(--gray-400);margin-left:auto">
+              💡 Requer Chrome ou Edge
             </span>
           </div>
         </div>
 
-        <!-- Live vitals cards -->
         <div class="vitals-grid" style="margin-bottom:20px;">
           <div class="vital-card off" id="vital-hr">
             <div class="vital-icon">❤️</div>
@@ -155,7 +155,6 @@
           </div>
         </div>
 
-        <!-- All patients table -->
         <div class="filter-row">
           <div class="search-bar">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4" stroke="#B4B2A9" stroke-width="1.3"/><path d="M9.5 9.5l3 3" stroke="#B4B2A9" stroke-width="1.3" stroke-linecap="round"/></svg>
@@ -170,12 +169,7 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Utente</th>
-                <th>Freq. cardíaca</th>
-                <th>SpO₂</th>
-                <th>Temperatura</th>
-                <th>Queda</th>
-                <th>Estado</th>
+                <th>Utente</th><th>FC</th><th>SpO₂</th><th>Temp</th><th>Queda</th><th>Estado</th>
               </tr>
             </thead>
             <tbody id="rt-tbody">
@@ -197,13 +191,7 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Data</th>
-                <th>Hora</th>
-                <th>Utente</th>
-                <th>FC (bpm)</th>
-                <th>SpO₂ (%)</th>
-                <th>Temp (°C)</th>
-                <th>Estado</th>
+                <th>Data</th><th>Hora</th><th>Utente</th><th>FC</th><th>SpO₂</th><th>Temp</th><th>Estado</th>
               </tr>
             </thead>
             <tbody id="reg-tbody">
@@ -217,8 +205,6 @@
       <div class="screen" id="screen-adicionar">
         <form id="add-form">
           <div class="form-grid">
-
-            <!-- Left: Dados pessoais -->
             <div>
               <div class="section-heading">Dados pessoais</div>
               <div class="field-group">
@@ -242,8 +228,6 @@
                 </div>
               </div>
             </div>
-
-            <!-- Right: Contactos -->
             <div>
               <div class="section-heading">Contactos</div>
               <div class="field-group">
@@ -278,7 +262,6 @@
                 </button>
               </div>
             </div>
-
           </div>
         </form>
       </div>
@@ -286,6 +269,26 @@
     </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /shell -->
+
+<!-- ─── Bottom nav (mobile only) ─── -->
+<nav class="bottom-nav">
+  <button class="bn-item active" data-screen="home">
+    <svg viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor"/></svg>
+    <span>Início</span>
+  </button>
+  <button class="bn-item" data-screen="realtime">
+    <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+    <span>Tempo real</span>
+  </button>
+  <button class="bn-item" data-screen="registos">
+    <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M5 1v3M11 1v3M2 7h12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+    <span>Registos</span>
+  </button>
+  <button class="bn-item" data-screen="adicionar">
+    <svg viewBox="0 0 16 16" fill="none"><circle cx="7" cy="6" r="3" stroke="currentColor" stroke-width="1.3"/><path d="M1 14c0-3.3 2.7-6 6-6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M12 10v4M10 12h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+    <span>Adicionar</span>
+  </button>
+</nav>
 
 <!-- Notification panel -->
 <div id="notif-panel">
@@ -303,11 +306,13 @@
 
 <script type="module" src="js/app.js"></script>
 
-<!-- Expose patient selector to app.js -->
 <script type="module">
   import { getPatients } from './js/db.js';
-  // Populate patient dropdown once DOM is ready
+  import { logout } from './js/auth.js';
+
   document.addEventListener('DOMContentLoaded', async () => {
+
+    // Populate patient dropdown
     try {
       const patients = await getPatients();
       const sel = document.getElementById('patient-selector');
@@ -317,10 +322,40 @@
         opt.textContent = p.name;
         sel.appendChild(opt);
       });
-      sel.addEventListener('change', () => {
-        window._selectedPatientId = sel.value;
-      });
+      sel.addEventListener('change', () => { window._selectedPatientId = sel.value; });
     } catch(e) { console.error(e); }
+
+    // Mobile logout button visibility
+    const mobileLogout = document.getElementById('logout-btn-mobile');
+    const checkMobile = () => {
+      mobileLogout.style.display = window.innerWidth <= 768 ? 'flex' : 'none';
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    mobileLogout.addEventListener('click', logout);
+
+    // Bottom nav — navigate and sync active state
+    document.querySelectorAll('.bn-item[data-screen]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // wait for goTo to be available
+        if (window.goTo) window.goTo(btn.dataset.screen);
+        document.querySelectorAll('.bn-item').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    // Patch goTo to also sync bottom nav
+    const patchNav = () => {
+      if (!window.goTo) { setTimeout(patchNav, 100); return; }
+      const original = window.goTo;
+      window.goTo = (name) => {
+        original(name);
+        document.querySelectorAll('.bn-item').forEach(b =>
+          b.classList.toggle('active', b.dataset.screen === name)
+        );
+      };
+    };
+    patchNav();
   });
 </script>
 

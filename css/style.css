@@ -324,3 +324,119 @@ html, body { height: 100%; font-family: var(--font); color: var(--gray-800); fon
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--gray-100); border-radius: 3px; }
+
+/* ════════════════════════════════════════════════
+   MOBILE RESPONSIVE  (≤ 768px)
+   ════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* ─── Shell: stack vertically ─── */
+  .shell { flex-direction: column; height: 100dvh; }
+
+  /* ─── Hide desktop sidebar ─── */
+  .sidebar { display: none; }
+
+  /* ─── Topbar ─── */
+  .topbar { padding: 0 16px; }
+  .topbar-title { font-size: 15px; }
+
+  /* ─── Content padding ─── */
+  .content { padding: 16px; padding-bottom: 80px; /* space for bottom nav */ }
+
+  /* ─── Stat grid: 2 columns ─── */
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat-val { font-size: 22px; }
+
+  /* ─── Home grid: single column ─── */
+  .home-grid { grid-template-columns: 1fr; }
+
+  /* ─── Vitals grid: 2 columns ─── */
+  .vitals-grid { grid-template-columns: repeat(2, 1fr); }
+  .vital-value { font-size: 22px; }
+
+  /* ─── Form: single column ─── */
+  .form-grid { grid-template-columns: 1fr; gap: 0; }
+  .field-row { flex-direction: column; gap: 8px; }
+  .field-row .field-input { width: 100%; max-width: 100% !important; }
+  .btn-row { flex-direction: column-reverse; }
+  .btn-row button { width: 100%; justify-content: center; }
+
+  /* ─── BLE bar: stack ─── */
+  #ble-bar { flex-direction: column; align-items: flex-start; gap: 8px; }
+  #ble-bar .ble-hint { display: none; } /* hide hint text on mobile */
+  #patient-selector { width: 100% !important; }
+  .ble-btn { width: 100%; justify-content: center; }
+
+  /* ─── Tables → card list ─── */
+  /* Hide table headers */
+  .data-table thead { display: none; }
+  /* Each row becomes a card */
+  .data-table, .data-table tbody { display: block; width: 100%; }
+  .data-table tr {
+    display: flex; flex-direction: column;
+    background: #fff; border: 1px solid #E8E6DF;
+    border-radius: var(--radius); margin-bottom: 10px;
+    padding: 12px 14px; gap: 6px;
+  }
+  .data-table tr:last-child { margin-bottom: 0; }
+  .data-table td {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 3px 0; border: none; font-size: 13px;
+  }
+  /* Label each cell using data-label attribute */
+  .data-table td::before {
+    content: attr(data-label);
+    font-size: 11px; font-weight: 500; color: var(--gray-400);
+    text-transform: uppercase; letter-spacing: .05em;
+    flex-shrink: 0; margin-right: 8px;
+  }
+  /* First cell (patient name) gets bigger treatment */
+  .data-table td:first-child {
+    font-weight: 500; font-size: 14px;
+    padding-bottom: 8px; border-bottom: 1px solid #F0EEE7; margin-bottom: 4px;
+  }
+  .data-table td:first-child::before { display: none; }
+  .empty-row { display: table-row; }
+  .empty-row td { display: table-cell; text-align: center; padding: 32px; }
+  .empty-row td::before { display: none; }
+
+  /* ─── Search bar full width ─── */
+  .search-bar { flex: 1 1 100%; }
+  .filter-row { gap: 6px; }
+
+  /* ─── Notification panel full width ─── */
+  #notif-panel { right: 8px; left: 8px; width: auto; top: 56px; }
+
+  /* ─── Toast: above bottom nav ─── */
+  #toast { bottom: 76px; }
+
+  /* ─── Auth card: full width ─── */
+  .auth-card { width: 100%; margin: 16px; padding: 28px 20px; }
+
+  /* ─── Bottom navigation bar ─── */
+  .bottom-nav {
+    display: flex !important;
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 60px; background: #fff;
+    border-top: 1px solid #E8E6DF;
+    z-index: 100; padding: 0 4px;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .bn-item {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3px;
+    background: none; border: none; cursor: pointer;
+    font-family: var(--font); padding: 6px 0;
+    color: var(--gray-400); transition: color var(--transition);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .bn-item svg { width: 20px; height: 20px; }
+  .bn-item span { font-size: 10px; font-weight: 500; }
+  .bn-item.active { color: var(--blue-600); }
+}
+
+/* ─── Desktop: hide bottom nav ─── */
+@media (min-width: 769px) {
+  .bottom-nav { display: none !important; }
+}
+

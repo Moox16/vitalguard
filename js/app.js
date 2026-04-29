@@ -233,11 +233,11 @@ async function renderRealtimeTable() {
           ${patient.name}
         </div>
       </td>
-      <td>${reading?.heart_rate != null ? reading.heart_rate + ' bpm' : '—'}</td>
-      <td>${reading?.spo2 != null ? reading.spo2 + '%' : '—'}</td>
-      <td>${reading?.temperature != null ? reading.temperature + ' °C' : '—'}</td>
-      <td>${reading?.fall_detected ? '<span style="color:#E24B4A;font-weight:500">⚠ Queda</span>' : '—'}</td>
-      <td><span class="vp vp-${status === 'normal' ? 'ok' : status === 'atencao' ? 'warn' : status === 'alerta' ? 'alert' : 'none'}">
+      <td data-label="FC">${reading?.heart_rate != null ? reading.heart_rate + ' bpm' : '—'}</td>
+      <td data-label="SpO₂">${reading?.spo2 != null ? reading.spo2 + '%' : '—'}</td>
+      <td data-label="Temp">${reading?.temperature != null ? reading.temperature + ' °C' : '—'}</td>
+      <td data-label="Queda">${reading?.fall_detected ? '<span style="color:#E24B4A;font-weight:500">⚠ Queda</span>' : '—'}</td>
+      <td data-label="Estado"><span class="vp vp-${status === 'normal' ? 'ok' : status === 'atencao' ? 'warn' : status === 'alerta' ? 'alert' : 'none'}">
         ${status === 'normal' ? 'Normal' : status === 'atencao' ? 'Atenção' : status === 'alerta' ? 'Alerta' : 'Sem dados'}
       </span></td>`;
     tbody.appendChild(tr);
@@ -454,18 +454,18 @@ async function renderRegistos() {
 
       tbody.innerHTML += `
         <tr>
-          <td>${date.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' })}</td>
-          <td style="font-family:var(--font-mono)">${date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}</td>
+          <td data-label="Data">${date.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' })}</td>
+          <td data-label="Hora" style="font-family:var(--font-mono)">${date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}</td>
           <td>
             <div style="display:flex;align-items:center;gap:8px">
               <div class="avatar" style="width:26px;height:26px;font-size:9px;background:${colors.bg};color:${colors.fg}">${initials}</div>
               ${name}
             </div>
           </td>
-          <td>${r.heart_rate != null ? r.heart_rate + ' bpm' : '—'}</td>
-          <td>${r.spo2 != null ? r.spo2 + '%' : '—'}</td>
-          <td>${r.temperature != null ? r.temperature + ' °C' : '—'}</td>
-          <td><span class="vp vp-${status === 'normal' ? 'ok' : status === 'atencao' ? 'warn' : status === 'alerta' ? 'alert' : 'none'}">
+          <td data-label="FC">${r.heart_rate != null ? r.heart_rate + ' bpm' : '—'}</td>
+          <td data-label="SpO₂">${r.spo2 != null ? r.spo2 + '%' : '—'}</td>
+          <td data-label="Temp">${r.temperature != null ? r.temperature + ' °C' : '—'}</td>
+          <td data-label="Estado"><span class="vp vp-${status === 'normal' ? 'ok' : status === 'atencao' ? 'warn' : status === 'alerta' ? 'alert' : 'none'}">
             ${status === 'normal' ? 'Normal' : status === 'atencao' ? 'Atenção' : status === 'alerta' ? 'Alerta' : 'Sem dados'}
           </span></td>
         </tr>`;
