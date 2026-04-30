@@ -1,10 +1,8 @@
 // js/app.js
-// Main application logic — navigation, UI updates, data loading
-
 import { requireAuth, logout } from './auth.js';
-import { connect, disconnect, isConnected, isSupported, getDeviceName } from './bluetooth.js';
+import { connect, disconnect, isConnected, isSupported } from './bluetooth.js';
 import {
-  getPatients, addPatient, deletePatient,
+  getPatients, addPatient,
   saveReading, getAllReadings, getLatestReading,
   getAlerts, createAlert, clearAlerts
 } from './db.js';
@@ -16,35 +14,87 @@ let currentReading = { heart_rate: null, spo2: null, temperature: null, fall_det
 let selectedPatientId = null;
 let activeFilter = 'todos';
 
+// ─── Thresholds (overridable from settings) ───────────────────
+let THRESHOLDS = {
+  hr_high: 100, hr_low: 50,
+  spo2_warn: 94, spo2_alert: 90,
+  temp_warn: 37.5, temp_alert: 38.5,
+};
+
+function loadThresholds() {
+  const saved = localStorage.getItem('vg_thresholds');
+  if (saved) THRESHOLDS = { ...THRESHOLDS, ...JSON.parse(saved) };
+}
+
+function saveThresholds() {
+  localStorage.setItem('vg_thresholds', JSON.stringify(THRESHOLDS));
+}
+
+// ─── Dark theme ───────────────────────────────────────────────
+function initTheme() {
+  const saved = localStorage.getItem('vg_theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const dark = saved === 'dark' || (!saved && prefersDark);
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  updateThemeIcon(dark);
+}
+
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const next = isDark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('vg_theme', next);
+  updateThemeIcon(!isDark);
+}
+
+function updateThemeIcon(isDark) {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  btn.title = isDark ? 'Mudar para tema claro' : 'Mudar para tema escuro';
+  btn.innerHTML = isDark
+    ? `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.22 3.22l1.06 1.06M11.72 11.72l1.06 1.06M3.22 12.78l1.06-1.06M11.72 4.28l1.06-1.06" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`
+    : `<svg viewBox="0 0 16 16" fill="none"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+}
+
 // ─── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  initTheme();
+  loadThresholds();
+
   const user = await requireAuth();
   if (!user) return;
 
   document.getElementById('user-email').textContent = user.email;
+  document.getElementById('settings-email').textContent = user.email;
 
   await loadPatients();
   await loadAlerts();
   renderHome();
   renderRegistos();
+  renderPatientsList();
 
-  // Navigation
-  document.querySelectorAll('.sb-item[data-screen]').forEach(btn => {
+  // Sidebar + bottom nav
+  document.querySelectorAll('[data-screen]').forEach(btn => {
     btn.addEventListener('click', () => goTo(btn.dataset.screen));
   });
 
-  // BLE button
+  // Theme toggle
+  document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+
+  // BLE
   document.getElementById('ble-btn').addEventListener('click', toggleBluetooth);
+  document.getElementById('patient-selector').addEventListener('change', (e) => {
+    selectedPatientId = e.target.value || null;
+    highlightSelectedPatient();
+  });
 
-  // Search
+  // Search + filters
   document.getElementById('tr-search').addEventListener('input', filterRealtimeTable);
-
-  // Filter chips
   document.querySelectorAll('[data-filter]').forEach(chip => {
     chip.addEventListener('click', () => setFilter(chip));
   });
 
-  // Form submit
+  // Add patient form
   document.getElementById('add-form').addEventListener('submit', handleAddPatient);
   document.getElementById('clear-btn').addEventListener('click', clearForm);
 
@@ -56,93 +106,84 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('notif-clear').addEventListener('click', handleClearAlerts);
   document.addEventListener('click', () => document.getElementById('notif-panel').classList.remove('show'));
 
-  // Logout
-  document.getElementById('logout-btn').addEventListener('click', logout);
+  // Logout (sidebar + mobile topbar)
+  document.querySelectorAll('.logout-trigger').forEach(b => b.addEventListener('click', logout));
 
   // Export
   document.getElementById('export-btn').addEventListener('click', exportCSV);
+
+  // Settings
+  initSettings();
 });
 
 // ─── Navigation ───────────────────────────────────────────────
 const screenMeta = {
-  home:      { title: 'Painel de controlo', live: false },
-  realtime:  { title: 'Tempo real',         live: true  },
-  registos:  { title: 'Registos',           live: false },
-  adicionar: { title: 'Adicionar utente',   live: false },
+  home:       { title: 'Painel de controlo', live: false },
+  realtime:   { title: 'Tempo real',         live: true  },
+  registos:   { title: 'Registos',           live: false },
+  adicionar:  { title: 'Adicionar utente',   live: false },
+  definicoes: { title: 'Definições',         live: false },
 };
 
 export function goTo(name) {
-  document.querySelectorAll('.sb-item[data-screen]').forEach(b =>
+  document.querySelectorAll('[data-screen]').forEach(b =>
     b.classList.toggle('active', b.dataset.screen === name)
   );
   document.querySelectorAll('.screen').forEach(s =>
     s.classList.toggle('active', s.id === 'screen-' + name)
   );
-  document.getElementById('topbar-title').textContent = screenMeta[name].title;
-  document.getElementById('live-badge').style.display = screenMeta[name].live ? 'inline-flex' : 'none';
+  const meta = screenMeta[name] || { title: name, live: false };
+  document.getElementById('topbar-title').textContent = meta.title;
+  document.getElementById('live-badge').style.display = meta.live ? 'inline-flex' : 'none';
 
-  if (name === 'realtime') renderRealtimeTable();
-  if (name === 'registos') renderRegistos();
-  if (name === 'home') renderHome();
+  if (name === 'realtime')   renderRealtimeTable();
+  if (name === 'registos')   renderRegistos();
+  if (name === 'home')       renderHome();
 }
 
 // ─── Data loaders ─────────────────────────────────────────────
 async function loadPatients() {
-  try {
-    patients = await getPatients();
-  } catch (e) {
-    showToast('Erro ao carregar utentes.', 'error');
-  }
+  try { patients = await getPatients(); } catch (e) { showToast('Erro ao carregar utentes.', 'error'); }
 }
 
 async function loadAlerts() {
-  try {
-    alerts = await getAlerts();
-    renderAlerts();
-  } catch (e) {
-    console.error('Erro ao carregar alertas:', e);
-  }
+  try { alerts = await getAlerts(); renderAlerts(); } catch (e) { console.error(e); }
 }
 
-// ─── Home screen ──────────────────────────────────────────────
+// ─── Home ─────────────────────────────────────────────────────
 async function renderHome() {
-  // Stats
   let normal = 0, atencao = 0, alertCount = 0;
   for (const p of patients) {
     const r = await getLatestReading(p.id);
-    const status = getStatus(r);
-    if (status === 'normal') normal++;
-    else if (status === 'atencao') atencao++;
-    else if (status === 'alerta') alertCount++;
+    const s = getStatus(r);
+    if (s === 'normal') normal++;
+    else if (s === 'atencao') atencao++;
+    else if (s === 'alerta') alertCount++;
   }
-
   document.getElementById('stat-total').textContent = patients.length;
   document.getElementById('stat-normal').textContent = normal;
   document.getElementById('stat-atencao').textContent = atencao;
   document.getElementById('stat-alerta').textContent = alertCount;
 
-  // Recent patients list
   const list = document.getElementById('recent-patients');
   list.innerHTML = '';
-  const recent = patients.slice(0, 6);
-  for (const p of recent) {
+  for (const p of patients.slice(0, 6)) {
     const r = await getLatestReading(p.id);
-    const status = getStatus(r);
-    const initials = getInitials(p.name);
+    const s = getStatus(r);
     const colors = avatarColors(p.id);
     list.innerHTML += `
       <div class="patient-row" onclick="goTo('realtime')">
-        <div class="avatar" style="background:${colors.bg};color:${colors.fg}">${initials}</div>
+        <div class="avatar" style="background:${colors.bg};color:${colors.fg}">${getInitials(p.name)}</div>
         <div>
           <div class="p-name">${p.name}</div>
           <div class="p-sub">${formatReading(r)}</div>
         </div>
-        <span class="badge badge-${status === 'normal' ? 'ok' : status === 'atencao' ? 'warn' : 'alert'}">
-          ${status === 'normal' ? 'Normal' : status === 'atencao' ? 'Atenção' : 'Alerta'}
+        <span class="badge badge-${s === 'normal' ? 'ok' : s === 'atencao' ? 'warn' : 'alert'}">
+          ${s === 'normal' ? 'Normal' : s === 'atencao' ? 'Atenção' : 'Alerta'}
         </span>
       </div>`;
   }
-  if (recent.length === 0) list.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:16px 0">Sem utentes registados.</div>';
+  if (!patients.length) list.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:16px 0">Sem utentes registados.</div>';
 }
 
 // ─── Alerts ───────────────────────────────────────────────────
@@ -151,16 +192,16 @@ function renderAlerts() {
   const badge = document.getElementById('bell-badge');
   const header = document.getElementById('notif-count');
 
-  if (alerts.length === 0) {
+  if (!alerts.length) {
     panel.innerHTML = '<div class="notif-empty">Sem alertas recentes.</div>';
     badge.style.display = 'none';
     header.textContent = 'Notificações';
+    document.getElementById('home-alerts').innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:8px 0">Sem alertas.</div>';
     return;
   }
 
   badge.style.display = 'block';
   header.textContent = `Notificações (${alerts.length})`;
-
   const homeAlerts = document.getElementById('home-alerts');
   homeAlerts.innerHTML = '';
   panel.innerHTML = '';
@@ -168,14 +209,12 @@ function renderAlerts() {
   alerts.slice(0, 5).forEach(a => {
     const isAlert = a.type === 'alert';
     const time = new Date(a.created_at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
-
     homeAlerts.innerHTML += `
       <div class="alert-item">
         <div class="alert-dot ${isAlert ? 'dot-alert' : 'dot-warn'}"></div>
         <div><div class="alert-txt">${a.patients?.name || 'Utente'} — ${a.message}</div></div>
         <div class="alert-time">${time}</div>
       </div>`;
-
     panel.innerHTML += `
       <div class="notif-item">
         <div class="alert-dot ${isAlert ? 'dot-alert' : 'dot-warn'}" style="margin-top:4px"></div>
@@ -188,17 +227,11 @@ function renderAlerts() {
 }
 
 async function handleClearAlerts() {
-  try {
-    await clearAlerts();
-    alerts = [];
-    renderAlerts();
-    showToast('Alertas limpos.');
-  } catch (e) {
-    showToast('Erro ao limpar alertas.', 'error');
-  }
+  try { await clearAlerts(); alerts = []; renderAlerts(); showToast('Alertas limpos.'); }
+  catch (e) { showToast('Erro ao limpar alertas.', 'error'); }
 }
 
-// ─── Realtime screen ──────────────────────────────────────────
+// ─── Realtime ─────────────────────────────────────────────────
 async function renderRealtimeTable() {
   const tbody = document.getElementById('rt-tbody');
   tbody.innerHTML = '<tr class="empty-row"><td colspan="6"><div class="loading"><div class="spinner"></div>A carregar...</div></td></tr>';
@@ -210,27 +243,32 @@ async function renderRealtimeTable() {
   }
 
   tbody.innerHTML = '';
-  if (rows.length === 0) {
+  if (!rows.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Sem utentes registados.</td></tr>';
     return;
   }
 
   rows.forEach(({ patient, reading }) => {
     const status = getStatus(reading);
-    const initials = getInitials(patient.name);
     const colors = avatarColors(patient.id);
-    const searchQ = activeFilter;
-    const visible = searchQ === 'todos' || status === searchQ;
+    const isSelected = selectedPatientId && patient.id === selectedPatientId;
+    const visible = activeFilter === 'todos' || status === activeFilter;
 
     const tr = document.createElement('tr');
     tr.dataset.status = status;
     tr.dataset.name = patient.name.toLowerCase();
+    tr.dataset.pid = patient.id;
     tr.style.display = visible ? '' : 'none';
+    if (isSelected) tr.classList.add('row-selected');
+
     tr.innerHTML = `
       <td>
         <div style="display:flex;align-items:center;gap:10px">
-          <div class="avatar" style="width:30px;height:30px;font-size:10px;background:${colors.bg};color:${colors.fg}">${initials}</div>
-          ${patient.name}
+          <div class="avatar" style="width:30px;height:30px;font-size:10px;background:${colors.bg};color:${colors.fg}">${getInitials(patient.name)}</div>
+          <div>
+            <div style="font-weight:500">${patient.name}</div>
+            ${isSelected ? '<div style="font-size:11px;color:var(--teal-400)">● Dispositivo ligado</div>' : ''}
+          </div>
         </div>
       </td>
       <td data-label="FC">${reading?.heart_rate != null ? reading.heart_rate + ' bpm' : '—'}</td>
@@ -241,6 +279,12 @@ async function renderRealtimeTable() {
         ${status === 'normal' ? 'Normal' : status === 'atencao' ? 'Atenção' : status === 'alerta' ? 'Alerta' : 'Sem dados'}
       </span></td>`;
     tbody.appendChild(tr);
+  });
+}
+
+function highlightSelectedPatient() {
+  document.querySelectorAll('#rt-tbody tr').forEach(tr => {
+    tr.classList.toggle('row-selected', tr.dataset.pid === selectedPatientId);
   });
 }
 
@@ -260,11 +304,11 @@ function setFilter(el) {
   filterRealtimeTable();
 }
 
-// ─── Vitals cards (live reading from BLE) ─────────────────────
+// ─── Vital cards ──────────────────────────────────────────────
 function updateVitalCards(reading) {
-  setVital('hr',   reading.heart_rate,   'bpm',  v => v > 100 || v < 50 ? 'alert' : v > 90 ? 'warn' : 'ok');
-  setVital('spo2', reading.spo2,         '%',    v => v < 90 ? 'alert' : v < 94 ? 'warn' : 'ok');
-  setVital('temp', reading.temperature,  '°C',   v => v > 37.5 ? 'warn' : v > 38.5 ? 'alert' : 'ok');
+  setVital('hr',   reading.heart_rate,  v => v > THRESHOLDS.hr_high || v < THRESHOLDS.hr_low ? 'alert' : v > THRESHOLDS.hr_high - 10 ? 'warn' : 'ok');
+  setVital('spo2', reading.spo2,        v => v < THRESHOLDS.spo2_alert ? 'alert' : v < THRESHOLDS.spo2_warn ? 'warn' : 'ok');
+  setVital('temp', reading.temperature, v => v > THRESHOLDS.temp_alert ? 'alert' : v > THRESHOLDS.temp_warn ? 'warn' : 'ok');
 
   const fallCard = document.getElementById('vital-fall');
   if (reading.fall_detected) {
@@ -280,7 +324,7 @@ function updateVitalCards(reading) {
   }
 }
 
-function setVital(key, value, unit, statusFn) {
+function setVital(key, value, statusFn) {
   const card = document.getElementById('vital-' + key);
   const valEl = card.querySelector('.vital-value');
   const statusEl = card.querySelector('.vital-status');
@@ -307,17 +351,18 @@ async function toggleBluetooth() {
   if (isConnected()) {
     await disconnect();
     btn.classList.remove('connected');
-    label.textContent = 'Ligar dispositivo';
+    label.textContent = 'Ligar dispositivo ESP32';
     selectedPatientId = null;
+    selector.value = '';
     showToast('Dispositivo desligado.');
+    renderRealtimeTable();
     return;
   }
 
   if (!isSupported()) {
-    showToast('Web Bluetooth não suportado neste browser. Use o Chrome.', 'error');
+    showToast('Web Bluetooth não suportado. Use o Chrome.', 'error');
     return;
   }
-
   if (!selectedPatientId) {
     showToast('Seleccione um utente primeiro.', 'error');
     selector.style.border = '1.5px solid #E24B4A';
@@ -327,14 +372,14 @@ async function toggleBluetooth() {
 
   btn.disabled = true;
   label.textContent = 'A ligar...';
-
   try {
     const name = await connect(onBLEData, onBLEDisconnect);
     btn.classList.add('connected');
     label.textContent = 'Desligar — ' + name;
     showToast('Ligado a ' + name + '!', 'success');
+    renderRealtimeTable();
   } catch (e) {
-    label.textContent = 'Ligar dispositivo';
+    label.textContent = 'Ligar dispositivo ESP32';
     if (e.name !== 'NotFoundError') showToast('Erro: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
@@ -342,62 +387,40 @@ async function toggleBluetooth() {
 }
 
 async function onBLEData(data) {
-  // Merge new data into current reading
   currentReading = { ...currentReading, ...data };
   updateVitalCards(currentReading);
 
-  // Save to Supabase every time we get a full reading
-  if (
-    currentReading.heart_rate != null &&
-    currentReading.spo2 != null &&
-    currentReading.temperature != null
-  ) {
+  if (currentReading.heart_rate != null && currentReading.spo2 != null && currentReading.temperature != null) {
     try {
       await saveReading(selectedPatientId, currentReading);
-
-      // Check thresholds and create alerts
       await checkThresholds(currentReading);
-
-      // Refresh realtime table if visible
-      if (document.getElementById('screen-realtime').classList.contains('active')) {
-        renderRealtimeTable();
-      }
-    } catch (e) {
-      console.error('Erro ao guardar leitura:', e);
-    }
+      if (document.getElementById('screen-realtime').classList.contains('active')) renderRealtimeTable();
+    } catch (e) { console.error('Erro ao guardar leitura:', e); }
   }
 }
 
 function onBLEDisconnect() {
-  const btn = document.getElementById('ble-btn');
-  const label = document.getElementById('ble-label');
-  btn.classList.remove('connected');
-  label.textContent = 'Ligar dispositivo';
+  document.getElementById('ble-btn').classList.remove('connected');
+  document.getElementById('ble-label').textContent = 'Ligar dispositivo ESP32';
   showToast('Dispositivo desligado.', 'error');
 }
 
 async function checkThresholds(r) {
   if (!selectedPatientId) return;
-
-  if (r.fall_detected) {
-    await createAlert(selectedPatientId, 'alert', 'Queda detectada');
-    await loadAlerts();
-  }
-  if (r.heart_rate > 100 || r.heart_rate < 50) {
-    await createAlert(selectedPatientId, 'warn', `FC fora do normal: ${r.heart_rate} bpm`);
-    await loadAlerts();
-  }
-  if (r.spo2 < 94) {
-    await createAlert(selectedPatientId, r.spo2 < 90 ? 'alert' : 'warn', `SpO₂ baixo: ${r.spo2}%`);
-    await loadAlerts();
-  }
-  if (r.temperature > 37.5) {
-    await createAlert(selectedPatientId, 'warn', `Temperatura elevada: ${r.temperature}°C`);
-    await loadAlerts();
+  const checks = [
+    [r.fall_detected,                                          'alert', 'Queda detectada'],
+    [r.heart_rate > THRESHOLDS.hr_high || r.heart_rate < THRESHOLDS.hr_low, 'warn', `FC fora do normal: ${r.heart_rate} bpm`],
+    [r.spo2 < THRESHOLDS.spo2_alert,                          'alert', `SpO₂ crítico: ${r.spo2}%`],
+    [r.spo2 < THRESHOLDS.spo2_warn && r.spo2 >= THRESHOLDS.spo2_alert, 'warn', `SpO₂ baixo: ${r.spo2}%`],
+    [r.temperature > THRESHOLDS.temp_alert,                   'alert', `Febre alta: ${r.temperature}°C`],
+    [r.temperature > THRESHOLDS.temp_warn && r.temperature <= THRESHOLDS.temp_alert, 'warn', `Temperatura elevada: ${r.temperature}°C`],
+  ];
+  for (const [cond, type, msg] of checks) {
+    if (cond) { await createAlert(selectedPatientId, type, msg); await loadAlerts(); }
   }
 }
 
-// ─── Add patient form ─────────────────────────────────────────
+// ─── Add patient ──────────────────────────────────────────────
 async function handleAddPatient(e) {
   e.preventDefault();
   const btn = document.getElementById('submit-btn');
@@ -408,14 +431,16 @@ async function handleAddPatient(e) {
     name:    document.getElementById('f-nome').value.trim(),
     phone:   document.getElementById('f-tel').value.trim(),
     email:   document.getElementById('f-email').value.trim(),
-    address: document.getElementById('f-morada').value.trim(),
+    address: [document.getElementById('f-morada').value.trim(), document.getElementById('f-loc').value.trim(), document.getElementById('f-cp').value.trim()].filter(Boolean).join(', '),
     nif:     document.getElementById('f-nif').value.trim(),
     nhc:     document.getElementById('f-utente').value.trim(),
+    notes:   document.getElementById('f-notas').value.trim(),
   };
 
   try {
     await addPatient(patient);
     await loadPatients();
+    refreshPatientSelector();
     clearForm();
     showToast(`Utente "${patient.name}" adicionado!`, 'success');
     setTimeout(() => goTo('home'), 1000);
@@ -427,87 +452,193 @@ async function handleAddPatient(e) {
   }
 }
 
-function clearForm() {
-  document.getElementById('add-form').reset();
+function clearForm() { document.getElementById('add-form').reset(); }
+
+function refreshPatientSelector() {
+  const sel = document.getElementById('patient-selector');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Seleccionar utente...</option>';
+  patients.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    if (p.id === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
 }
 
-// ─── Registos screen ──────────────────────────────────────────
+// ─── Registos ─────────────────────────────────────────────────
 async function renderRegistos() {
   const tbody = document.getElementById('reg-tbody');
-  tbody.innerHTML = '<tr class="empty-row"><td colspan="7"><div class="loading"><div class="spinner"></div>A carregar...</div></td></tr>';
+  tbody.innerHTML = '<tr class="empty-row"><td colspan="8"><div class="loading"><div class="spinner"></div>A carregar...</div></td></tr>';
 
   try {
-    const readings = await getAllReadings(100);
+    // Show all patients, with their latest reading if available
+    await loadPatients();
+    const readings = await getAllReadings(200);
+
+    // Group readings by patient_id for quick lookup
+    const readingsByPatient = {};
+    readings.forEach(r => {
+      if (!readingsByPatient[r.patient_id]) readingsByPatient[r.patient_id] = [];
+      readingsByPatient[r.patient_id].push(r);
+    });
+
     tbody.innerHTML = '';
 
-    if (readings.length === 0) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Sem registos disponíveis.</td></tr>';
-      return;
+    // First: patients with readings (most recent first)
+    const patientsWithReadings = patients.filter(p => readingsByPatient[p.id]?.length);
+    const patientsWithout = patients.filter(p => !readingsByPatient[p.id]?.length);
+
+    const renderPatientRows = (p) => {
+      const colors = avatarColors(p.id);
+      const pReadings = readingsByPatient[p.id] || [];
+
+      if (!pReadings.length) {
+        // Patient with no vitals yet — show their info row
+        tbody.innerHTML += `
+          <tr>
+            <td data-label="Data">—</td>
+            <td data-label="Hora">—</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="avatar" style="width:26px;height:26px;font-size:9px;background:${colors.bg};color:${colors.fg}">${getInitials(p.name)}</div>
+                <div>
+                  <div>${p.name}</div>
+                  ${p.notes ? `<div style="font-size:11px;color:var(--gray-400);margin-top:2px">${p.notes}</div>` : ''}
+                </div>
+              </div>
+            </td>
+            <td data-label="FC">—</td>
+            <td data-label="SpO₂">—</td>
+            <td data-label="Temp">—</td>
+            <td data-label="Observações">${p.notes ? `<span style="font-size:12px;color:var(--gray-400)">${p.notes}</span>` : '—'}</td>
+            <td data-label="Estado"><span class="vp vp-none">Sem dados</span></td>
+          </tr>`;
+        return;
+      }
+
+      pReadings.forEach((r, i) => {
+        const status = getStatus(r);
+        const date = new Date(r.created_at);
+        tbody.innerHTML += `
+          <tr>
+            <td data-label="Data">${date.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' })}</td>
+            <td data-label="Hora" style="font-family:var(--font-mono)">${date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="avatar" style="width:26px;height:26px;font-size:9px;background:${colors.bg};color:${colors.fg}">${getInitials(p.name)}</div>
+                <div>
+                  <div>${p.name}</div>
+                  ${i === 0 && p.notes ? `<div style="font-size:11px;color:var(--gray-400);margin-top:2px">${p.notes}</div>` : ''}
+                </div>
+              </div>
+            </td>
+            <td data-label="FC">${r.heart_rate != null ? r.heart_rate + ' bpm' : '—'}</td>
+            <td data-label="SpO₂">${r.spo2 != null ? r.spo2 + '%' : '—'}</td>
+            <td data-label="Temp">${r.temperature != null ? r.temperature + ' °C' : '—'}</td>
+            <td data-label="Observações">${i === 0 && p.notes ? `<span style="font-size:12px;color:var(--gray-400)">${p.notes}</span>` : '—'}</td>
+            <td data-label="Estado"><span class="vp vp-${status === 'normal' ? 'ok' : status === 'atencao' ? 'warn' : status === 'alerta' ? 'alert' : 'none'}">
+              ${status === 'normal' ? 'Normal' : status === 'atencao' ? 'Atenção' : status === 'alerta' ? 'Alerta' : 'Sem dados'}
+            </span></td>
+          </tr>`;
+      });
+    };
+
+    [...patientsWithReadings, ...patientsWithout].forEach(renderPatientRows);
+
+    if (!patients.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Sem utentes registados.</td></tr>';
     }
-
-    readings.forEach(r => {
-      const name = r.patients?.name || 'Desconhecido';
-      const initials = getInitials(name);
-      const colors = avatarColors(r.patient_id);
-      const status = getStatus(r);
-      const date = new Date(r.created_at);
-
-      tbody.innerHTML += `
-        <tr>
-          <td data-label="Data">${date.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' })}</td>
-          <td data-label="Hora" style="font-family:var(--font-mono)">${date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}</td>
-          <td>
-            <div style="display:flex;align-items:center;gap:8px">
-              <div class="avatar" style="width:26px;height:26px;font-size:9px;background:${colors.bg};color:${colors.fg}">${initials}</div>
-              ${name}
-            </div>
-          </td>
-          <td data-label="FC">${r.heart_rate != null ? r.heart_rate + ' bpm' : '—'}</td>
-          <td data-label="SpO₂">${r.spo2 != null ? r.spo2 + '%' : '—'}</td>
-          <td data-label="Temp">${r.temperature != null ? r.temperature + ' °C' : '—'}</td>
-          <td data-label="Estado"><span class="vp vp-${status === 'normal' ? 'ok' : status === 'atencao' ? 'warn' : status === 'alerta' ? 'alert' : 'none'}">
-            ${status === 'normal' ? 'Normal' : status === 'atencao' ? 'Atenção' : status === 'alerta' ? 'Alerta' : 'Sem dados'}
-          </span></td>
-        </tr>`;
-    });
   } catch (e) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Erro ao carregar registos.</td></tr>';
+    console.error(e);
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Erro ao carregar registos.</td></tr>';
   }
+}
+
+// ─── Patients list (in Registos header) ───────────────────────
+function renderPatientsList() {
+  refreshPatientSelector();
 }
 
 // ─── Export CSV ───────────────────────────────────────────────
 async function exportCSV() {
-  const readings = await getAllReadings(1000);
-  const rows = [['Data', 'Hora', 'Utente', 'FC (bpm)', 'SpO2 (%)', 'Temp (°C)', 'Queda']];
-  readings.forEach(r => {
-    const d = new Date(r.created_at);
-    rows.push([
-      d.toLocaleDateString('pt-PT'),
-      d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
-      r.patients?.name || '',
-      r.heart_rate ?? '',
-      r.spo2 ?? '',
-      r.temperature ?? '',
-      r.fall_detected ? 'Sim' : 'Não',
-    ]);
+  try {
+    const readings = await getAllReadings(1000);
+    const rows = [['Data', 'Hora', 'Utente', 'FC (bpm)', 'SpO2 (%)', 'Temp (°C)', 'Queda', 'Observações']];
+    patients.forEach(p => {
+      const pReadings = readings.filter(r => r.patient_id === p.id);
+      if (!pReadings.length) {
+        rows.push(['—', '—', p.name, '—', '—', '—', '—', p.notes || '']);
+        return;
+      }
+      pReadings.forEach(r => {
+        const d = new Date(r.created_at);
+        rows.push([
+          d.toLocaleDateString('pt-PT'),
+          d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
+          p.name, r.heart_rate ?? '', r.spo2 ?? '', r.temperature ?? '',
+          r.fall_detected ? 'Sim' : 'Não', p.notes || '',
+        ]);
+      });
+    });
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'vitalguard_registos.csv'; a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV exportado!', 'success');
+  } catch (e) { showToast('Erro ao exportar.', 'error'); }
+}
+
+// ─── Settings ─────────────────────────────────────────────────
+function initSettings() {
+  // Populate threshold fields
+  document.getElementById('s-hr-high').value  = THRESHOLDS.hr_high;
+  document.getElementById('s-hr-low').value   = THRESHOLDS.hr_low;
+  document.getElementById('s-spo2-warn').value = THRESHOLDS.spo2_warn;
+  document.getElementById('s-spo2-alert').value = THRESHOLDS.spo2_alert;
+  document.getElementById('s-temp-warn').value = THRESHOLDS.temp_warn;
+  document.getElementById('s-temp-alert').value = THRESHOLDS.temp_alert;
+
+  // Notification preference
+  const notifPref = localStorage.getItem('vg_notif') || 'all';
+  document.querySelectorAll('[name="notif-pref"]').forEach(r => { r.checked = r.value === notifPref; });
+
+  // Save button
+  document.getElementById('settings-save').addEventListener('click', () => {
+    THRESHOLDS.hr_high    = parseFloat(document.getElementById('s-hr-high').value);
+    THRESHOLDS.hr_low     = parseFloat(document.getElementById('s-hr-low').value);
+    THRESHOLDS.spo2_warn  = parseFloat(document.getElementById('s-spo2-warn').value);
+    THRESHOLDS.spo2_alert = parseFloat(document.getElementById('s-spo2-alert').value);
+    THRESHOLDS.temp_warn  = parseFloat(document.getElementById('s-temp-warn').value);
+    THRESHOLDS.temp_alert = parseFloat(document.getElementById('s-temp-alert').value);
+    saveThresholds();
+
+    const sel = document.querySelector('[name="notif-pref"]:checked');
+    if (sel) localStorage.setItem('vg_notif', sel.value);
+
+    showToast('Definições guardadas!', 'success');
   });
-  const csv = rows.map(r => r.join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'vitalguard_registos.csv'; a.click();
-  URL.revokeObjectURL(url);
-  showToast('CSV exportado!', 'success');
+
+  // Reset thresholds
+  document.getElementById('settings-reset').addEventListener('click', () => {
+    localStorage.removeItem('vg_thresholds');
+    THRESHOLDS = { hr_high:100, hr_low:50, spo2_warn:94, spo2_alert:90, temp_warn:37.5, temp_alert:38.5 };
+    initSettings();
+    showToast('Definições reposta.');
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
-function getStatus(reading) {
-  if (!reading) return 'sem-dados';
-  if (reading.fall_detected) return 'alerta';
-  if (reading.spo2 != null && reading.spo2 < 90) return 'alerta';
-  if (reading.heart_rate != null && (reading.heart_rate > 100 || reading.heart_rate < 50)) return 'atencao';
-  if (reading.spo2 != null && reading.spo2 < 94) return 'atencao';
-  if (reading.temperature != null && reading.temperature > 37.5) return 'atencao';
+function getStatus(r) {
+  if (!r) return 'sem-dados';
+  if (r.fall_detected) return 'alerta';
+  if (r.spo2 != null && r.spo2 < THRESHOLDS.spo2_alert) return 'alerta';
+  if (r.temperature != null && r.temperature > THRESHOLDS.temp_alert) return 'alerta';
+  if (r.heart_rate != null && (r.heart_rate > THRESHOLDS.hr_high || r.heart_rate < THRESHOLDS.hr_low)) return 'atencao';
+  if (r.spo2 != null && r.spo2 < THRESHOLDS.spo2_warn) return 'atencao';
+  if (r.temperature != null && r.temperature > THRESHOLDS.temp_warn) return 'atencao';
   return 'normal';
 }
 
@@ -525,9 +656,9 @@ function formatReading(r) {
 }
 
 const PALETTE = [
-  { bg: '#B5D4F4', fg: '#0C447C' }, { bg: '#F5C4B3', fg: '#712B13' },
-  { bg: '#C0DD97', fg: '#27500A' }, { bg: '#D3D1C7', fg: '#444441' },
-  { bg: '#F7C1C1', fg: '#791F1F' }, { bg: '#FAC775', fg: '#854F0B' },
+  {bg:'#B5D4F4',fg:'#0C447C'},{bg:'#F5C4B3',fg:'#712B13'},
+  {bg:'#C0DD97',fg:'#27500A'},{bg:'#D3D1C7',fg:'#444441'},
+  {bg:'#F7C1C1',fg:'#791F1F'},{bg:'#FAC775',fg:'#854F0B'},
 ];
 function avatarColors(id) {
   const idx = (typeof id === 'string' ? id.charCodeAt(0) : id) % PALETTE.length;
@@ -542,5 +673,4 @@ export function showToast(msg, type = '') {
   t._timer = setTimeout(() => t.className = '', 3000);
 }
 
-// Expose goTo globally for inline onclick
 window.goTo = goTo;
