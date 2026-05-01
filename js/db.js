@@ -1,11 +1,11 @@
 // js/db.js
 // All Supabase database interactions
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // ─── Replace these with your actual Supabase project values ───
-const SUPABASE_URL = "https://ektychwtekgekblxtmnx.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrdHljaHd0ZWtnZWtibHh0bW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MDIzNjIsImV4cCI6MjA5Mjk3ODM2Mn0.ucwNoAQPTndySkM-YKWabzyxrf6gFphOeLUJIJVwmI8";
+const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
 // ──────────────────────────────────────────────────────────────
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -34,6 +34,17 @@ export async function addPatient(patient) {
 export async function deletePatient(id) {
   const { error } = await supabase.from('patients').delete().eq('id', id);
   if (error) throw error;
+}
+
+export async function updatePatient(id, fields) {
+  const { data, error } = await supabase
+    .from('patients')
+    .update(fields)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 // ── Vitals ────────────────────────────────────────────────────
@@ -75,7 +86,7 @@ export async function getReadings(patientId, limit = 50) {
 export async function getAllReadings(limit = 100) {
   const { data, error } = await supabase
     .from('vitals')
-    .select('*, patients(name)')
+    .select('*, patients(id, name, notes)')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
