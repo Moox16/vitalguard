@@ -292,6 +292,28 @@ html, body { height: 100%; font-family: var(--font); color: var(--text-primary);
 #toast.success { background: var(--green-600); color: #fff; }
 #toast.error { background: var(--red-600); color: #fff; }
 
+/* ─── Action buttons (delete/edit in table rows) ─── */
+.action-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 500; padding: 4px 8px;
+  border-radius: 6px; border: 1px solid var(--border-input);
+  background: var(--bg-subtle); color: var(--text-secondary);
+  cursor: pointer; font-family: var(--font);
+  transition: all var(--transition); white-space: nowrap;
+}
+.action-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.action-btn.danger { color: var(--red-600); border-color: #F7C1C1; background: var(--red-50); }
+.action-btn.danger:hover { background: #F7C1C1; color: var(--red-600); }
+[data-theme="dark"] .action-btn.danger { border-color: #4A1A1A; background: #2A0A0A; color: #E24B4A; }
+[data-theme="dark"] .action-btn.danger:hover { background: #3D1414; }
+
+/* ─── Notes cell ─── */
+.notes-cell { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-width: 160px; }
+.notes-text { font-size: 12px; color: var(--text-secondary); flex: 1; line-height: 1.4; }
+.notes-actions { display: flex; gap: 4px; flex-shrink: 0; opacity: 0; transition: opacity var(--transition); }
+.notes-cell:hover .notes-actions { opacity: 1; }
+.notes-edit-area { width: 100%; font-size: 12px; }
+
 /* ─── Loading ─── */
 .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--text-secondary); font-size: 13px; gap: 8px; }
 .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--blue-400); border-radius: 50%; animation: spin .7s linear infinite; }
