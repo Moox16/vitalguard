@@ -2,7 +2,7 @@
 import { requireAuth, logout } from './auth.js';
 import { connect, disconnect, isConnected, isSupported } from './bluetooth.js';
 import {
-  getPatients, addPatient,
+  getPatients, addPatient, deletePatient, updatePatient,
   saveReading, getAllReadings, getLatestReading,
   getAlerts, createAlert, clearAlerts
 } from './db.js';
@@ -13,19 +13,18 @@ let alerts = [];
 let currentReading = { heart_rate: null, spo2: null, temperature: null, fall_detected: false };
 let selectedPatientId = null;
 let activeFilter = 'todos';
+let realtimeSearchQuery = '';
 
-// ─── Thresholds (overridable from settings) ───────────────────
+// ─── Thresholds ───────────────────────────────────────────────
 let THRESHOLDS = {
   hr_high: 100, hr_low: 50,
   spo2_warn: 94, spo2_alert: 90,
   temp_warn: 37.5, temp_alert: 38.5,
 };
-
 function loadThresholds() {
-  const saved = localStorage.getItem('vg_thresholds');
-  if (saved) THRESHOLDS = { ...THRESHOLDS, ...JSON.parse(saved) };
+  const s = localStorage.getItem('vg_thresholds');
+  if (s) THRESHOLDS = { ...THRESHOLDS, ...JSON.parse(s) };
 }
-
 function saveThresholds() {
   localStorage.setItem('vg_thresholds', JSON.stringify(THRESHOLDS));
 }
@@ -38,15 +37,15 @@ function initTheme() {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   updateThemeIcon(dark);
 }
-
 function toggleTheme() {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const next = isDark ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('vg_theme', next);
   updateThemeIcon(!isDark);
+  const darkToggle = document.getElementById('dark-toggle');
+  if (darkToggle) darkToggle.checked = !isDark;
 }
-
 function updateThemeIcon(isDark) {
   const btn = document.getElementById('theme-toggle');
   if (!btn) return;
@@ -71,9 +70,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadAlerts();
   renderHome();
   renderRegistos();
-  renderPatientsList();
+  refreshPatientSelector();
 
-  // Sidebar + bottom nav
+  // Navigation
   document.querySelectorAll('[data-screen]').forEach(btn => {
     btn.addEventListener('click', () => goTo(btn.dataset.screen));
   });
@@ -85,11 +84,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('ble-btn').addEventListener('click', toggleBluetooth);
   document.getElementById('patient-selector').addEventListener('change', (e) => {
     selectedPatientId = e.target.value || null;
-    highlightSelectedPatient();
+    applyRealtimeFilter();
   });
 
-  // Search + filters
-  document.getElementById('tr-search').addEventListener('input', filterRealtimeTable);
+  // Search + filter chips
+  document.getElementById('tr-search').addEventListener('input', (e) => {
+    realtimeSearchQuery = e.target.value.toLowerCase();
+    applyRealtimeFilter();
+  });
   document.querySelectorAll('[data-filter]').forEach(chip => {
     chip.addEventListener('click', () => setFilter(chip));
   });
@@ -106,7 +108,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('notif-clear').addEventListener('click', handleClearAlerts);
   document.addEventListener('click', () => document.getElementById('notif-panel').classList.remove('show'));
 
-  // Logout (sidebar + mobile topbar)
+  // Logout
   document.querySelectorAll('.logout-trigger').forEach(b => b.addEventListener('click', logout));
 
   // Export
@@ -143,11 +145,13 @@ export function goTo(name) {
 
 // ─── Data loaders ─────────────────────────────────────────────
 async function loadPatients() {
-  try { patients = await getPatients(); } catch (e) { showToast('Erro ao carregar utentes.', 'error'); }
+  try { patients = await getPatients(); }
+  catch (e) { showToast('Erro ao carregar utentes.', 'error'); }
 }
 
 async function loadAlerts() {
-  try { alerts = await getAlerts(); renderAlerts(); } catch (e) { console.error(e); }
+  try { alerts = await getAlerts(); renderAlerts(); }
+  catch (e) { console.error(e); }
 }
 
 // ─── Home ─────────────────────────────────────────────────────
@@ -183,7 +187,7 @@ async function renderHome() {
         </span>
       </div>`;
   }
-  if (!patients.length) list.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:16px 0">Sem utentes registados.</div>';
+  if (!patients.length) list.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;padding:16px 0">Sem utentes registados.</div>';
 }
 
 // ─── Alerts ───────────────────────────────────────────────────
@@ -196,7 +200,7 @@ function renderAlerts() {
     panel.innerHTML = '<div class="notif-empty">Sem alertas recentes.</div>';
     badge.style.display = 'none';
     header.textContent = 'Notificações';
-    document.getElementById('home-alerts').innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:8px 0">Sem alertas.</div>';
+    document.getElementById('home-alerts').innerHTML = '<div style="color:var(--text-secondary);font-size:13px;padding:8px 0">Sem alertas.</div>';
     return;
   }
 
@@ -234,7 +238,7 @@ async function handleClearAlerts() {
 // ─── Realtime ─────────────────────────────────────────────────
 async function renderRealtimeTable() {
   const tbody = document.getElementById('rt-tbody');
-  tbody.innerHTML = '<tr class="empty-row"><td colspan="6"><div class="loading"><div class="spinner"></div>A carregar...</div></td></tr>';
+  tbody.innerHTML = '<tr class="empty-row"><td colspan="7"><div class="loading"><div class="spinner"></div>A carregar...</div></td></tr>';
 
   const rows = [];
   for (const p of patients) {
@@ -244,7 +248,7 @@ async function renderRealtimeTable() {
 
   tbody.innerHTML = '';
   if (!rows.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Sem utentes registados.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Sem utentes registados.</td></tr>';
     return;
   }
 
@@ -252,14 +256,11 @@ async function renderRealtimeTable() {
     const status = getStatus(reading);
     const colors = avatarColors(patient.id);
     const isSelected = selectedPatientId && patient.id === selectedPatientId;
-    const visible = activeFilter === 'todos' || status === activeFilter;
 
     const tr = document.createElement('tr');
     tr.dataset.status = status;
     tr.dataset.name = patient.name.toLowerCase();
     tr.dataset.pid = patient.id;
-    tr.style.display = visible ? '' : 'none';
-    if (isSelected) tr.classList.add('row-selected');
 
     tr.innerHTML = `
       <td>
@@ -277,23 +278,31 @@ async function renderRealtimeTable() {
       <td data-label="Queda">${reading?.fall_detected ? '<span style="color:#E24B4A;font-weight:500">⚠ Queda</span>' : '—'}</td>
       <td data-label="Estado"><span class="vp vp-${status === 'normal' ? 'ok' : status === 'atencao' ? 'warn' : status === 'alerta' ? 'alert' : 'none'}">
         ${status === 'normal' ? 'Normal' : status === 'atencao' ? 'Atenção' : status === 'alerta' ? 'Alerta' : 'Sem dados'}
-      </span></td>`;
+      </span></td>
+      <td data-label="Ações">
+        <button class="action-btn danger" onclick="handleDeletePatient('${patient.id}', '${patient.name.replace(/'/g, "\\'")}')">
+          <svg viewBox="0 0 16 16" fill="none" width="13" height="13"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Apagar
+        </button>
+      </td>`;
     tbody.appendChild(tr);
   });
+
+  applyRealtimeFilter();
 }
 
-function highlightSelectedPatient() {
-  document.querySelectorAll('#rt-tbody tr').forEach(tr => {
-    tr.classList.toggle('row-selected', tr.dataset.pid === selectedPatientId);
-  });
-}
+// ─── Filter: show ONLY matching rows, hide everything else ────
+function applyRealtimeFilter() {
+  const rows = document.querySelectorAll('#rt-tbody tr[data-pid]');
 
-function filterRealtimeTable() {
-  const q = document.getElementById('tr-search').value.toLowerCase();
-  document.querySelectorAll('#rt-tbody tr').forEach(row => {
-    const matchFilter = activeFilter === 'todos' || row.dataset.status === activeFilter;
-    const matchSearch = (row.dataset.name || '').includes(q);
-    row.style.display = matchFilter && matchSearch ? '' : 'none';
+  rows.forEach(row => {
+    const matchesStatus = activeFilter === 'todos' || row.dataset.status === activeFilter;
+    const matchesSearch = !realtimeSearchQuery || row.dataset.name.includes(realtimeSearchQuery);
+    // If a specific patient is selected in the BLE dropdown, show only that patient
+    const matchesSelected = !selectedPatientId || row.dataset.pid === selectedPatientId;
+
+    const visible = matchesStatus && matchesSearch && matchesSelected;
+    row.style.display = visible ? '' : 'none';
   });
 }
 
@@ -301,8 +310,25 @@ function setFilter(el) {
   document.querySelectorAll('[data-filter]').forEach(c => c.classList.remove('on'));
   el.classList.add('on');
   activeFilter = el.dataset.filter;
-  filterRealtimeTable();
+  applyRealtimeFilter();
 }
+
+// ─── Delete patient ───────────────────────────────────────────
+window.handleDeletePatient = async (id, name) => {
+  if (!confirm(`Apagar "${name}"? Esta acção remove todos os dados do utente e não pode ser desfeita.`)) return;
+  try {
+    await deletePatient(id);
+    await loadPatients();
+    refreshPatientSelector();
+    if (selectedPatientId === id) selectedPatientId = null;
+    renderRealtimeTable();
+    renderRegistos();
+    renderHome();
+    showToast(`"${name}" apagado.`, 'success');
+  } catch (e) {
+    showToast('Erro ao apagar utente.', 'error');
+  }
+};
 
 // ─── Vital cards ──────────────────────────────────────────────
 function updateVitalCards(reading) {
@@ -355,14 +381,11 @@ async function toggleBluetooth() {
     selectedPatientId = null;
     selector.value = '';
     showToast('Dispositivo desligado.');
-    renderRealtimeTable();
+    applyRealtimeFilter();
     return;
   }
 
-  if (!isSupported()) {
-    showToast('Web Bluetooth não suportado. Use o Chrome.', 'error');
-    return;
-  }
+  if (!isSupported()) { showToast('Web Bluetooth não suportado. Use o Chrome.', 'error'); return; }
   if (!selectedPatientId) {
     showToast('Seleccione um utente primeiro.', 'error');
     selector.style.border = '1.5px solid #E24B4A';
@@ -377,19 +400,16 @@ async function toggleBluetooth() {
     btn.classList.add('connected');
     label.textContent = 'Desligar — ' + name;
     showToast('Ligado a ' + name + '!', 'success');
-    renderRealtimeTable();
+    applyRealtimeFilter();
   } catch (e) {
     label.textContent = 'Ligar dispositivo ESP32';
     if (e.name !== 'NotFoundError') showToast('Erro: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-  }
+  } finally { btn.disabled = false; }
 }
 
 async function onBLEData(data) {
   currentReading = { ...currentReading, ...data };
   updateVitalCards(currentReading);
-
   if (currentReading.heart_rate != null && currentReading.spo2 != null && currentReading.temperature != null) {
     try {
       await saveReading(selectedPatientId, currentReading);
@@ -408,11 +428,11 @@ function onBLEDisconnect() {
 async function checkThresholds(r) {
   if (!selectedPatientId) return;
   const checks = [
-    [r.fall_detected,                                          'alert', 'Queda detectada'],
-    [r.heart_rate > THRESHOLDS.hr_high || r.heart_rate < THRESHOLDS.hr_low, 'warn', `FC fora do normal: ${r.heart_rate} bpm`],
-    [r.spo2 < THRESHOLDS.spo2_alert,                          'alert', `SpO₂ crítico: ${r.spo2}%`],
-    [r.spo2 < THRESHOLDS.spo2_warn && r.spo2 >= THRESHOLDS.spo2_alert, 'warn', `SpO₂ baixo: ${r.spo2}%`],
-    [r.temperature > THRESHOLDS.temp_alert,                   'alert', `Febre alta: ${r.temperature}°C`],
+    [r.fall_detected,                                                           'alert', 'Queda detectada'],
+    [r.heart_rate > THRESHOLDS.hr_high || r.heart_rate < THRESHOLDS.hr_low,    'warn',  `FC fora do normal: ${r.heart_rate} bpm`],
+    [r.spo2 < THRESHOLDS.spo2_alert,                                            'alert', `SpO₂ crítico: ${r.spo2}%`],
+    [r.spo2 < THRESHOLDS.spo2_warn && r.spo2 >= THRESHOLDS.spo2_alert,         'warn',  `SpO₂ baixo: ${r.spo2}%`],
+    [r.temperature > THRESHOLDS.temp_alert,                                     'alert', `Febre alta: ${r.temperature}°C`],
     [r.temperature > THRESHOLDS.temp_warn && r.temperature <= THRESHOLDS.temp_alert, 'warn', `Temperatura elevada: ${r.temperature}°C`],
   ];
   for (const [cond, type, msg] of checks) {
@@ -424,8 +444,7 @@ async function checkThresholds(r) {
 async function handleAddPatient(e) {
   e.preventDefault();
   const btn = document.getElementById('submit-btn');
-  btn.disabled = true;
-  btn.textContent = 'A adicionar...';
+  btn.disabled = true; btn.textContent = 'A adicionar...';
 
   const patient = {
     name:    document.getElementById('f-nome').value.trim(),
@@ -447,8 +466,7 @@ async function handleAddPatient(e) {
   } catch (e) {
     showToast('Erro ao adicionar utente: ' + e.message, 'error');
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Adicionar utente';
+    btn.disabled = false; btn.textContent = 'Adicionar utente';
   }
 }
 
@@ -460,8 +478,7 @@ function refreshPatientSelector() {
   sel.innerHTML = '<option value="">Seleccionar utente...</option>';
   patients.forEach(p => {
     const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.name;
+    opt.value = p.id; opt.textContent = p.name;
     if (p.id === current) opt.selected = true;
     sel.appendChild(opt);
   });
@@ -473,47 +490,70 @@ async function renderRegistos() {
   tbody.innerHTML = '<tr class="empty-row"><td colspan="8"><div class="loading"><div class="spinner"></div>A carregar...</div></td></tr>';
 
   try {
-    // Show all patients, with their latest reading if available
     await loadPatients();
     const readings = await getAllReadings(200);
 
-    // Group readings by patient_id for quick lookup
-    const readingsByPatient = {};
+    // Group readings by patient
+    const byPatient = {};
     readings.forEach(r => {
-      if (!readingsByPatient[r.patient_id]) readingsByPatient[r.patient_id] = [];
-      readingsByPatient[r.patient_id].push(r);
+      if (!byPatient[r.patient_id]) byPatient[r.patient_id] = [];
+      byPatient[r.patient_id].push(r);
     });
 
     tbody.innerHTML = '';
 
-    // First: patients with readings (most recent first)
-    const patientsWithReadings = patients.filter(p => readingsByPatient[p.id]?.length);
-    const patientsWithout = patients.filter(p => !readingsByPatient[p.id]?.length);
+    if (!patients.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Sem utentes registados.</td></tr>';
+      return;
+    }
 
-    const renderPatientRows = (p) => {
+    const withReadings = patients.filter(p => byPatient[p.id]?.length);
+    const without = patients.filter(p => !byPatient[p.id]?.length);
+
+    const renderRows = (p) => {
       const colors = avatarColors(p.id);
-      const pReadings = readingsByPatient[p.id] || [];
+      const pReadings = byPatient[p.id] || [];
+
+      // notes: prefer from patient record directly (fixes old patients)
+      // also check first reading's joined patient data as fallback
+      const notes = p.notes || pReadings[0]?.patients?.notes || '';
+
+      const nameCell = (showNotes) => `
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="avatar" style="width:26px;height:26px;font-size:9px;background:${colors.bg};color:${colors.fg}">${getInitials(p.name)}</div>
+          <div>
+            <div style="font-weight:500">${p.name}</div>
+            ${showNotes && notes ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${notes}</div>` : ''}
+          </div>
+        </div>`;
+
+      const notesCell = (showEdit) => showEdit ? `
+        <div class="notes-cell" data-pid="${p.id}" data-notes="${notes.replace(/"/g, '&quot;')}">
+          <span class="notes-text">${notes || '<span style="color:var(--text-muted);font-style:italic">Sem observações</span>'}</span>
+          <div class="notes-actions">
+            <button class="action-btn" onclick="editNotes('${p.id}', this)">✏️</button>
+            ${notes ? `<button class="action-btn danger" onclick="deleteNotes('${p.id}', this)">🗑️</button>` : ''}
+          </div>
+        </div>` : '—';
+
+      const deleteCell = `
+        <button class="action-btn danger" onclick="handleDeletePatient('${p.id}', '${p.name.replace(/'/g, "\\'")}')">
+          <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Apagar
+        </button>`;
 
       if (!pReadings.length) {
-        // Patient with no vitals yet — show their info row
         tbody.innerHTML += `
           <tr>
             <td data-label="Data">—</td>
             <td data-label="Hora">—</td>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px">
-                <div class="avatar" style="width:26px;height:26px;font-size:9px;background:${colors.bg};color:${colors.fg}">${getInitials(p.name)}</div>
-                <div>
-                  <div>${p.name}</div>
-                  ${p.notes ? `<div style="font-size:11px;color:var(--gray-400);margin-top:2px">${p.notes}</div>` : ''}
-                </div>
-              </div>
-            </td>
+            <td>${nameCell(false)}</td>
             <td data-label="FC">—</td>
             <td data-label="SpO₂">—</td>
             <td data-label="Temp">—</td>
-            <td data-label="Observações">${p.notes ? `<span style="font-size:12px;color:var(--gray-400)">${p.notes}</span>` : '—'}</td>
+            <td data-label="Observações">${notesCell(true)}</td>
             <td data-label="Estado"><span class="vp vp-none">Sem dados</span></td>
+            <td>${deleteCell}</td>
           </tr>`;
         return;
       }
@@ -525,41 +565,69 @@ async function renderRegistos() {
           <tr>
             <td data-label="Data">${date.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' })}</td>
             <td data-label="Hora" style="font-family:var(--font-mono)">${date.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}</td>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px">
-                <div class="avatar" style="width:26px;height:26px;font-size:9px;background:${colors.bg};color:${colors.fg}">${getInitials(p.name)}</div>
-                <div>
-                  <div>${p.name}</div>
-                  ${i === 0 && p.notes ? `<div style="font-size:11px;color:var(--gray-400);margin-top:2px">${p.notes}</div>` : ''}
-                </div>
-              </div>
-            </td>
+            <td>${nameCell(false)}</td>
             <td data-label="FC">${r.heart_rate != null ? r.heart_rate + ' bpm' : '—'}</td>
             <td data-label="SpO₂">${r.spo2 != null ? r.spo2 + '%' : '—'}</td>
             <td data-label="Temp">${r.temperature != null ? r.temperature + ' °C' : '—'}</td>
-            <td data-label="Observações">${i === 0 && p.notes ? `<span style="font-size:12px;color:var(--gray-400)">${p.notes}</span>` : '—'}</td>
+            <td data-label="Observações">${notesCell(i === 0)}</td>
             <td data-label="Estado"><span class="vp vp-${status === 'normal' ? 'ok' : status === 'atencao' ? 'warn' : status === 'alerta' ? 'alert' : 'none'}">
               ${status === 'normal' ? 'Normal' : status === 'atencao' ? 'Atenção' : status === 'alerta' ? 'Alerta' : 'Sem dados'}
             </span></td>
+            <td>${i === 0 ? deleteCell : ''}</td>
           </tr>`;
       });
     };
 
-    [...patientsWithReadings, ...patientsWithout].forEach(renderPatientRows);
-
-    if (!patients.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Sem utentes registados.</td></tr>';
-    }
+    [...withReadings, ...without].forEach(renderRows);
   } catch (e) {
     console.error(e);
     tbody.innerHTML = '<tr class="empty-row"><td colspan="8">Erro ao carregar registos.</td></tr>';
   }
 }
 
-// ─── Patients list (in Registos header) ───────────────────────
-function renderPatientsList() {
-  refreshPatientSelector();
-}
+// ─── Edit / delete notes ──────────────────────────────────────
+window.editNotes = (patientId, btn) => {
+  const cell = btn.closest('.notes-cell');
+  const current = cell.dataset.notes;
+
+  cell.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:flex-start;flex-direction:column;width:100%">
+      <textarea class="field-input notes-edit-area" style="height:60px;padding:6px 8px;font-size:12px;resize:vertical">${current}</textarea>
+      <div style="display:flex;gap:6px">
+        <button class="action-btn" onclick="saveNotes('${patientId}', this)">✓ Guardar</button>
+        <button class="action-btn" onclick="renderRegistos()">✕ Cancelar</button>
+      </div>
+    </div>`;
+  cell.querySelector('textarea').focus();
+};
+
+window.saveNotes = async (patientId, btn) => {
+  const cell = btn.closest('.notes-cell');
+  const newNotes = cell.querySelector('textarea').value.trim();
+  try {
+    await updatePatient(patientId, { notes: newNotes });
+    // Update local patients array
+    const p = patients.find(p => p.id === patientId);
+    if (p) p.notes = newNotes;
+    showToast('Observações guardadas!', 'success');
+    renderRegistos();
+  } catch (e) {
+    showToast('Erro ao guardar observações.', 'error');
+  }
+};
+
+window.deleteNotes = async (patientId, btn) => {
+  if (!confirm('Apagar as observações deste utente?')) return;
+  try {
+    await updatePatient(patientId, { notes: '' });
+    const p = patients.find(p => p.id === patientId);
+    if (p) p.notes = '';
+    showToast('Observações apagadas.');
+    renderRegistos();
+  } catch (e) {
+    showToast('Erro ao apagar observações.', 'error');
+  }
+};
 
 // ─── Export CSV ───────────────────────────────────────────────
 async function exportCSV() {
@@ -568,18 +636,11 @@ async function exportCSV() {
     const rows = [['Data', 'Hora', 'Utente', 'FC (bpm)', 'SpO2 (%)', 'Temp (°C)', 'Queda', 'Observações']];
     patients.forEach(p => {
       const pReadings = readings.filter(r => r.patient_id === p.id);
-      if (!pReadings.length) {
-        rows.push(['—', '—', p.name, '—', '—', '—', '—', p.notes || '']);
-        return;
-      }
+      const notes = p.notes || '';
+      if (!pReadings.length) { rows.push(['—', '—', p.name, '—', '—', '—', '—', notes]); return; }
       pReadings.forEach(r => {
         const d = new Date(r.created_at);
-        rows.push([
-          d.toLocaleDateString('pt-PT'),
-          d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
-          p.name, r.heart_rate ?? '', r.spo2 ?? '', r.temperature ?? '',
-          r.fall_detected ? 'Sim' : 'Não', p.notes || '',
-        ]);
+        rows.push([d.toLocaleDateString('pt-PT'), d.toLocaleTimeString('pt-PT', { hour:'2-digit', minute:'2-digit' }), p.name, r.heart_rate ?? '', r.spo2 ?? '', r.temperature ?? '', r.fall_detected ? 'Sim' : 'Não', notes]);
       });
     });
     const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
@@ -593,19 +654,16 @@ async function exportCSV() {
 
 // ─── Settings ─────────────────────────────────────────────────
 function initSettings() {
-  // Populate threshold fields
-  document.getElementById('s-hr-high').value  = THRESHOLDS.hr_high;
-  document.getElementById('s-hr-low').value   = THRESHOLDS.hr_low;
+  document.getElementById('s-hr-high').value   = THRESHOLDS.hr_high;
+  document.getElementById('s-hr-low').value    = THRESHOLDS.hr_low;
   document.getElementById('s-spo2-warn').value = THRESHOLDS.spo2_warn;
-  document.getElementById('s-spo2-alert').value = THRESHOLDS.spo2_alert;
+  document.getElementById('s-spo2-alert').value= THRESHOLDS.spo2_alert;
   document.getElementById('s-temp-warn').value = THRESHOLDS.temp_warn;
-  document.getElementById('s-temp-alert').value = THRESHOLDS.temp_alert;
+  document.getElementById('s-temp-alert').value= THRESHOLDS.temp_alert;
 
-  // Notification preference
   const notifPref = localStorage.getItem('vg_notif') || 'all';
   document.querySelectorAll('[name="notif-pref"]').forEach(r => { r.checked = r.value === notifPref; });
 
-  // Save button
   document.getElementById('settings-save').addEventListener('click', () => {
     THRESHOLDS.hr_high    = parseFloat(document.getElementById('s-hr-high').value);
     THRESHOLDS.hr_low     = parseFloat(document.getElementById('s-hr-low').value);
@@ -614,19 +672,16 @@ function initSettings() {
     THRESHOLDS.temp_warn  = parseFloat(document.getElementById('s-temp-warn').value);
     THRESHOLDS.temp_alert = parseFloat(document.getElementById('s-temp-alert').value);
     saveThresholds();
-
     const sel = document.querySelector('[name="notif-pref"]:checked');
     if (sel) localStorage.setItem('vg_notif', sel.value);
-
     showToast('Definições guardadas!', 'success');
   });
 
-  // Reset thresholds
   document.getElementById('settings-reset').addEventListener('click', () => {
     localStorage.removeItem('vg_thresholds');
     THRESHOLDS = { hr_high:100, hr_low:50, spo2_warn:94, spo2_alert:90, temp_warn:37.5, temp_alert:38.5 };
     initSettings();
-    showToast('Definições reposta.');
+    showToast('Definições repostas.');
   });
 }
 
@@ -641,11 +696,7 @@ function getStatus(r) {
   if (r.temperature != null && r.temperature > THRESHOLDS.temp_warn) return 'atencao';
   return 'normal';
 }
-
-function getInitials(name) {
-  return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-}
-
+function getInitials(name) { return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase(); }
 function formatReading(r) {
   if (!r) return 'Sem dados';
   const parts = [];
@@ -654,7 +705,6 @@ function formatReading(r) {
   if (r.temperature != null) parts.push(`${r.temperature}°C`);
   return parts.join(' · ') || 'Sem dados';
 }
-
 const PALETTE = [
   {bg:'#B5D4F4',fg:'#0C447C'},{bg:'#F5C4B3',fg:'#712B13'},
   {bg:'#C0DD97',fg:'#27500A'},{bg:'#D3D1C7',fg:'#444441'},
@@ -664,7 +714,6 @@ function avatarColors(id) {
   const idx = (typeof id === 'string' ? id.charCodeAt(0) : id) % PALETTE.length;
   return PALETTE[idx];
 }
-
 export function showToast(msg, type = '') {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -674,3 +723,4 @@ export function showToast(msg, type = '') {
 }
 
 window.goTo = goTo;
+window.renderRegistos = renderRegistos;
