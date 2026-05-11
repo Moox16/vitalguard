@@ -447,13 +447,18 @@ async function handleAddPatient(e) {
   btn.disabled = true; btn.textContent = 'A adicionar...';
 
   const patient = {
-    name:    document.getElementById('f-nome').value.trim(),
-    phone:   document.getElementById('f-tel').value.trim(),
-    email:   document.getElementById('f-email').value.trim(),
-    address: [document.getElementById('f-morada').value.trim(), document.getElementById('f-loc').value.trim(), document.getElementById('f-cp').value.trim()].filter(Boolean).join(', '),
-    nif:     document.getElementById('f-nif').value.trim(),
-    nhc:     document.getElementById('f-utente').value.trim(),
-    notes:   document.getElementById('f-notas').value.trim(),
+    name:       document.getElementById('f-nome').value.trim(),
+    institution_id: document.getElementById('f-inst').value.trim(),
+    phone:      document.getElementById('f-tel').value.trim(),
+    email:      document.getElementById('f-email').value.trim(),
+    address:    [document.getElementById('f-morada').value.trim(), document.getElementById('f-loc').value.trim(), document.getElementById('f-cp').value.trim()].filter(Boolean).join(', '),
+    nif:        document.getElementById('f-nif').value.trim(),
+    nhc:        document.getElementById('f-utente').value.trim(),
+    dob:        document.getElementById('f-dob').value || null,
+    height_cm:  document.getElementById('f-altura').value ? parseFloat(document.getElementById('f-altura').value) : null,
+    weight_kg:  document.getElementById('f-peso').value ? parseFloat(document.getElementById('f-peso').value) : null,
+    health_history: document.getElementById('f-historico').value.trim(),
+    notes:      document.getElementById('f-notas').value.trim(),
   };
 
   try {
@@ -518,14 +523,20 @@ async function renderRegistos() {
       // also check first reading's joined patient data as fallback
       const notes = p.notes || pReadings[0]?.patients?.notes || '';
 
-      const nameCell = (showNotes) => `
+      const nameCell = (showNotes) => {
+        const age = p.dob ? Math.floor((Date.now() - new Date(p.dob)) / 31557600000) + ' anos' : null;
+        const bmi = p.height_cm && p.weight_kg ? (p.weight_kg / ((p.height_cm / 100) ** 2)).toFixed(1) : null;
+        const meta = [age, p.height_cm ? p.height_cm + ' cm' : null, p.weight_kg ? p.weight_kg + ' kg' : null, bmi ? 'IMC ' + bmi : null].filter(Boolean).join(' · ');
+        return `
         <div style="display:flex;align-items:center;gap:8px">
           <div class="avatar" style="width:26px;height:26px;font-size:9px;background:${colors.bg};color:${colors.fg}">${getInitials(p.name)}</div>
           <div>
             <div style="font-weight:500">${p.name}</div>
-            ${showNotes && notes ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">${notes}</div>` : ''}
+            ${p.institution_id ? `<div style="font-size:10px;color:var(--text-muted)">ID: ${p.institution_id}</div>` : ''}
+            ${meta ? `<div style="font-size:11px;color:var(--text-secondary)">${meta}</div>` : ''}
+            ${showNotes && p.health_history ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">📋 ${p.health_history}</div>` : ''}
           </div>
-        </div>`;
+        </div>`;};
 
       const notesCell = (showEdit) => showEdit ? `
         <div class="notes-cell" data-pid="${p.id}" data-notes="${notes.replace(/"/g, '&quot;')}">
