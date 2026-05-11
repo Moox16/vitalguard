@@ -4,8 +4,8 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/+esm';
 
 // ─── Replace these with your actual Supabase project values ───
-const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+const SUPABASE_URL = 'https://ektychwtekgekblxtmnx.supabase.co/';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrdHljaHd0ZWtnZWtibHh0bW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MDIzNjIsImV4cCI6MjA5Mjk3ODM2Mn0.ucwNoAQPTndySkM-YKWabzyxrf6gFphOeLUJIJVwmI8';
 // ──────────────────────────────────────────────────────────────
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
