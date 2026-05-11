@@ -63,8 +63,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const user = await requireAuth();
   if (!user) return;
 
-  document.getElementById('user-email').textContent = user.email;
-  document.getElementById('settings-email').textContent = user.email;
+  const userEmailEl = document.getElementById('user-email');
+  const settingsEmailEl = document.getElementById('settings-email');
+  if (userEmailEl) userEmailEl.textContent = user.email;
+  if (settingsEmailEl) settingsEmailEl.textContent = user.email;
 
   await loadPatients();
   await loadAlerts();
