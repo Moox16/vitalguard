@@ -1,11 +1,11 @@
 // js/db.js
 // All Supabase database interactions
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/+esm';
 
 // ─── Replace these with your actual Supabase project values ───
-const SUPABASE_URL = 'https://ektychwtekgekblxtmnx.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrdHljaHd0ZWtnZWtibHh0bW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MDIzNjIsImV4cCI6MjA5Mjk3ODM2Mn0.ucwNoAQPTndySkM-YKWabzyxrf6gFphOeLUJIJVwmI8';
+const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
 // ──────────────────────────────────────────────────────────────
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -67,9 +67,29 @@ export async function getLatestReading(patientId) {
     .eq('patient_id', patientId)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single();
-  if (error && error.code !== 'PGRST116') throw error; // ignore "no rows" error
-  return data || null;
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+// Fetch the latest reading for ALL patients in one query
+export async function getLatestReadingsAll() {
+  const { data, error } = await supabase
+    .from('vitals')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  // Keep only the first (most recent) reading per patient
+  const seen = new Set();
+  const latest = {};
+  (data || []).forEach(r => {
+    if (!seen.has(r.patient_id)) {
+      seen.add(r.patient_id);
+      latest[r.patient_id] = r;
+    }
+  });
+  return latest; // { patient_id: reading }
 }
 
 export async function getReadings(patientId, limit = 50) {
