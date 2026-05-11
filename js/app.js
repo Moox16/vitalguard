@@ -3,7 +3,7 @@ import { requireAuth, logout } from './auth.js';
 import { connect, disconnect, isConnected, isSupported } from './bluetooth.js';
 import {
   getPatients, addPatient, deletePatient, updatePatient,
-  saveReading, getAllReadings, getLatestReading,
+  saveReading, getAllReadings, getLatestReading, getLatestReadingsAll,
   getAlerts, createAlert, clearAlerts
 } from './db.js';
 
@@ -157,9 +157,11 @@ async function loadAlerts() {
 // ─── Home ─────────────────────────────────────────────────────
 async function renderHome() {
   let normal = 0, atencao = 0, alertCount = 0;
+  let latestReadings = {};
+  try { latestReadings = await getLatestReadingsAll(); } catch (e) { console.error(e); }
+
   for (const p of patients) {
-    const r = await getLatestReading(p.id);
-    const s = getStatus(r);
+    const s = getStatus(latestReadings[p.id] || null);
     if (s === 'normal') normal++;
     else if (s === 'atencao') atencao++;
     else if (s === 'alerta') alertCount++;
@@ -172,7 +174,7 @@ async function renderHome() {
   const list = document.getElementById('recent-patients');
   list.innerHTML = '';
   for (const p of patients.slice(0, 6)) {
-    const r = await getLatestReading(p.id);
+    const r = latestReadings[p.id] || null;
     const s = getStatus(r);
     const colors = avatarColors(p.id);
     list.innerHTML += `
@@ -240,19 +242,17 @@ async function renderRealtimeTable() {
   const tbody = document.getElementById('rt-tbody');
   tbody.innerHTML = '<tr class="empty-row"><td colspan="7"><div class="loading"><div class="spinner"></div>A carregar...</div></td></tr>';
 
-  const rows = [];
-  for (const p of patients) {
-    const r = await getLatestReading(p.id);
-    rows.push({ patient: p, reading: r });
-  }
+  let latestReadings = {};
+  try { latestReadings = await getLatestReadingsAll(); } catch (e) { console.error(e); }
 
   tbody.innerHTML = '';
-  if (!rows.length) {
+  if (!patients.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Sem utentes registados.</td></tr>';
     return;
   }
 
-  rows.forEach(({ patient, reading }) => {
+  patients.forEach(patient => {
+    const reading = latestReadings[patient.id] || null;
     const status = getStatus(reading);
     const colors = avatarColors(patient.id);
     const isSelected = selectedPatientId && patient.id === selectedPatientId;
