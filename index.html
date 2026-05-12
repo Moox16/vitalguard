@@ -35,20 +35,32 @@
 </div>
 
 <script type="module">
-  import { supabase } from './js/db.js';
+  import { login, getSession } from './js/auth.js';
+
+  // Already logged in? Go straight to dashboard
+  getSession().then(s => {
+    if (s) window.location.href = 'dashboard.html';
+  });
 
   document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    const err = document.getElementById('auth-error');
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    btn.disabled = true;
+    btn.textContent = 'A entrar...';
+    err.classList.remove('show');
 
-    if (error) {
-      document.getElementById('auth-error').textContent = error.message;
-      document.getElementById('auth-error').classList.add('show');
-    } else {
+    try {
+      await login(email, password);
       window.location.href = 'dashboard.html';
+    } catch (e) {
+      err.textContent = 'Email ou palavra-passe incorrectos.';
+      err.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
     }
   });
 </script>
