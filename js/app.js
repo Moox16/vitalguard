@@ -80,17 +80,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Theme toggle
-  document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+  document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
 
   // BLE
-  document.getElementById('ble-btn').addEventListener('click', toggleBluetooth);
-  document.getElementById('patient-selector').addEventListener('change', (e) => {
+  document.getElementById('ble-btn')?.addEventListener('click', toggleBluetooth);
+  document.getElementById('patient-selector')?.addEventListener('change', (e) => {
     selectedPatientId = e.target.value || null;
     applyRealtimeFilter();
   });
 
   // Search + filter chips
-  document.getElementById('tr-search').addEventListener('input', (e) => {
+  document.getElementById('tr-search')?.addEventListener('input', (e) => {
     realtimeSearchQuery = e.target.value.toLowerCase();
     applyRealtimeFilter();
   });
@@ -99,22 +99,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Add patient form
-  document.getElementById('add-form').addEventListener('submit', handleAddPatient);
-  document.getElementById('clear-btn').addEventListener('click', clearForm);
+  document.getElementById('add-form')?.addEventListener('submit', handleAddPatient);
+  document.getElementById('clear-btn')?.addEventListener('click', clearForm);
 
   // Bell
-  document.getElementById('bell-btn').addEventListener('click', (e) => {
+  document.getElementById('bell-btn')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    document.getElementById('notif-panel').classList.toggle('show');
+    document.getElementById('notif-panel')?.classList.toggle('show');
   });
-  document.getElementById('notif-clear').addEventListener('click', handleClearAlerts);
-  document.addEventListener('click', () => document.getElementById('notif-panel').classList.remove('show'));
+  document.getElementById('notif-clear')?.addEventListener('click', handleClearAlerts);
+  document.addEventListener('click', () => document.getElementById('notif-panel')?.classList.remove('show'));
 
   // Logout
   document.querySelectorAll('.logout-trigger').forEach(b => b.addEventListener('click', logout));
 
   // Export
-  document.getElementById('export-btn').addEventListener('click', exportCSV);
+  document.getElementById('export-btn')?.addEventListener('click', exportCSV);
 
   // Settings
   initSettings();
@@ -667,17 +667,18 @@ async function exportCSV() {
 
 // ─── Settings ─────────────────────────────────────────────────
 function initSettings() {
-  document.getElementById('s-hr-high').value   = THRESHOLDS.hr_high;
-  document.getElementById('s-hr-low').value    = THRESHOLDS.hr_low;
-  document.getElementById('s-spo2-warn').value = THRESHOLDS.spo2_warn;
-  document.getElementById('s-spo2-alert').value= THRESHOLDS.spo2_alert;
-  document.getElementById('s-temp-warn').value = THRESHOLDS.temp_warn;
-  document.getElementById('s-temp-alert').value= THRESHOLDS.temp_alert;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('s-hr-high',    THRESHOLDS.hr_high);
+  set('s-hr-low',     THRESHOLDS.hr_low);
+  set('s-spo2-warn',  THRESHOLDS.spo2_warn);
+  set('s-spo2-alert', THRESHOLDS.spo2_alert);
+  set('s-temp-warn',  THRESHOLDS.temp_warn);
+  set('s-temp-alert', THRESHOLDS.temp_alert);
 
   const notifPref = localStorage.getItem('vg_notif') || 'all';
   document.querySelectorAll('[name="notif-pref"]').forEach(r => { r.checked = r.value === notifPref; });
 
-  document.getElementById('settings-save').addEventListener('click', () => {
+  document.getElementById('settings-save')?.addEventListener('click', () => {
     THRESHOLDS.hr_high    = parseFloat(document.getElementById('s-hr-high').value);
     THRESHOLDS.hr_low     = parseFloat(document.getElementById('s-hr-low').value);
     THRESHOLDS.spo2_warn  = parseFloat(document.getElementById('s-spo2-warn').value);
@@ -690,7 +691,7 @@ function initSettings() {
     showToast('Definições guardadas!', 'success');
   });
 
-  document.getElementById('settings-reset').addEventListener('click', () => {
+  document.getElementById('settings-reset')?.addEventListener('click', () => {
     localStorage.removeItem('vg_thresholds');
     THRESHOLDS = { hr_high:100, hr_low:50, spo2_warn:94, spo2_alert:90, temp_warn:37.5, temp_alert:38.5 };
     initSettings();
