@@ -1,17 +1,12 @@
 // js/db.js
-// All Supabase database interactions
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/+esm';
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-// ─── Replace these with your actual Supabase project values ───
-const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
-// ──────────────────────────────────────────────────────────────
+const SUPABASE_URL = "https://ektychwtekgekblxtmnx.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrdHljaHd0ZWtnZWtibHh0bW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MDIzNjIsImV4cCI6MjA5Mjk3ODM2Mn0.ucwNoAQPTndySkM-YKWabzyxrf6gFphOeLUJIJVwmI8";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── Patients ──────────────────────────────────────────────────
-
 export async function getPatients() {
   const { data, error } = await supabase
     .from('patients')
@@ -36,10 +31,19 @@ export async function deletePatient(id) {
   if (error) throw error;
 }
 
-// ── Vitals ────────────────────────────────────────────────────
+export async function updatePatient(id, fields) {
+  const { data, error } = await supabase
+    .from('patients')
+    .update(fields)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
 
+// ── Vitals ────────────────────────────────────────────────────
 export async function saveReading(patientId, reading) {
-  // reading: { heart_rate, spo2, temperature, fall_detected }
   const { data, error } = await supabase
     .from('vitals')
     .insert([{ patient_id: patientId, ...reading }])
@@ -56,26 +60,33 @@ export async function getLatestReading(patientId) {
     .eq('patient_id', patientId)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single();
-  if (error && error.code !== 'PGRST116') throw error; // ignore "no rows" error
-  return data || null;
-}
-
-export async function getReadings(patientId, limit = 50) {
-  const { data, error } = await supabase
-    .from('vitals')
-    .select('*')
-    .eq('patient_id', patientId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
+    .maybeSingle();
   if (error) throw error;
   return data;
 }
 
-export async function getAllReadings(limit = 100) {
+export async function getLatestReadingsAll() {
   const { data, error } = await supabase
     .from('vitals')
-    .select('*, patients(name)')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const seen = new Set();
+  const latest = {};
+  (data || []).forEach(r => {
+    if (!seen.has(r.patient_id)) {
+      seen.add(r.patient_id);
+      latest[r.patient_id] = r;
+    }
+  });
+  return latest;
+}
+
+export async function getAllReadings(limit = 200) {
+  const { data, error } = await supabase
+    .from('vitals')
+    .select('*, patients(id, name, notes)')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -83,7 +94,6 @@ export async function getAllReadings(limit = 100) {
 }
 
 // ── Alerts ────────────────────────────────────────────────────
-
 export async function getAlerts(limit = 20) {
   const { data, error } = await supabase
     .from('alerts')
@@ -102,6 +112,6 @@ export async function createAlert(patientId, type, message) {
 }
 
 export async function clearAlerts() {
-  const { error } = await supabase.from('alerts').delete().neq('id', 0);
+  const { error } = await supabase.from('alerts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   if (error) throw error;
 }
