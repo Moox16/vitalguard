@@ -339,6 +339,61 @@
         </div>
       </div>
 
+
+      <!-- ══ Perfil do utente ══ -->
+      <div class="screen" id="screen-perfil">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+          <button class="cancel-btn" id="perfil-back" style="display:flex;align-items:center;gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Voltar
+          </button>
+          <h2 id="perfil-nome" style="font-size:18px;font-weight:600;color:var(--text-primary)">—</h2>
+          <span id="perfil-badge" class="badge badge-ok" style="margin-left:auto">—</span>
+        </div>
+        <div class="form-grid">
+          <div>
+            <div class="card" style="margin-bottom:16px;">
+              <div class="card-title">Dados pessoais</div>
+              <div class="perfil-row"><span class="perfil-lbl">ID Instituição</span><span id="p-inst">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">Nº de utente</span><span id="p-nhc">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">NIF</span><span id="p-nif">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">Data de nascimento</span><span id="p-dob">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">Idade</span><span id="p-age">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">Morada</span><span id="p-address">—</span></div>
+            </div>
+            <div class="card" style="margin-bottom:16px;">
+              <div class="card-title">Contactos</div>
+              <div class="perfil-row"><span class="perfil-lbl">Telefone</span><span id="p-phone">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">Email</span><span id="p-email">—</span></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Dados clínicos</div>
+              <div class="perfil-row"><span class="perfil-lbl">Altura</span><span id="p-height">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">Peso</span><span id="p-weight">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">IMC</span><span id="p-bmi">—</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="card" style="margin-bottom:16px;">
+              <div class="card-title">Histórico de saúde</div>
+              <p id="p-history" style="font-size:13px;color:var(--text-secondary);line-height:1.6">—</p>
+            </div>
+            <div class="card" style="margin-bottom:16px;">
+              <div class="card-title">Observações clínicas</div>
+              <p id="p-notes" style="font-size:13px;color:var(--text-secondary);line-height:1.6">—</p>
+            </div>
+            <div class="card">
+              <div class="card-title">Última leitura de sinais vitais</div>
+              <div class="perfil-row"><span class="perfil-lbl">Freq. cardíaca</span><span id="p-hr">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">SpO₂</span><span id="p-spo2">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">Temperatura</span><span id="p-temp">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">Queda detectada</span><span id="p-fall">—</span></div>
+              <div class="perfil-row"><span class="perfil-lbl">Data/hora</span><span id="p-readtime">—</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /shell -->

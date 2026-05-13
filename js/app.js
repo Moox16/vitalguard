@@ -105,6 +105,7 @@ const screenMeta = {
   registos:   { title: 'Registos',           live: false },
   adicionar:  { title: 'Adicionar utente',   live: false },
   definicoes: { title: 'Definições',         live: false },
+  perfil:     { title: 'Perfil do utente',   live: false },
 };
 
 export function goTo(name) {
@@ -524,10 +525,16 @@ async function renderRegistos() {
         </div>` : '—';
 
       const deleteCell = `
-        <button class="action-btn danger" onclick="handleDeletePatient('${p.id}', '${p.name.replace(/'/g, "\\'")}')">
-          <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Apagar
-        </button>`;
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          <button class="action-btn" onclick="showPerfil('${p.id}')">
+            <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><circle cx="8" cy="6" r="3" stroke="currentColor" stroke-width="1.3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            Ver perfil
+          </button>
+          <button class="action-btn danger" onclick="handleDeletePatient('${p.id}', '${p.name.replace(/'/g, "\\'")}')">
+            <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Apagar
+          </button>
+        </div>`;
 
       if (!pReadings.length) {
         tbody.innerHTML += `<tr>
@@ -707,3 +714,65 @@ export function showToast(msg, type = '') {
 
 window.goTo = goTo;
 window.renderRegistos = renderRegistos;
+
+// ─── Perfil do utente ─────────────────────────────────────────
+window.showPerfil = async (patientId) => {
+  const p = patients.find(p => p.id === patientId);
+  if (!p) return;
+
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val || '—';
+  };
+
+  // Basic info
+  set('perfil-nome', p.name);
+  set('p-inst',    p.institution_id);
+  set('p-nhc',     p.nhc);
+  set('p-nif',     p.nif);
+  set('p-address', p.address);
+  set('p-phone',   p.phone);
+  set('p-email',   p.email);
+  set('p-history', p.health_history);
+  set('p-notes',   p.notes);
+
+  // Date of birth + age
+  if (p.dob) {
+    const dobDate = new Date(p.dob);
+    set('p-dob', dobDate.toLocaleDateString('pt-PT'));
+    const age = Math.floor((Date.now() - dobDate) / 31557600000);
+    set('p-age', age + ' anos');
+  } else {
+    set('p-dob', '—'); set('p-age', '—');
+  }
+
+  // Height / weight / BMI
+  set('p-height', p.height_cm ? p.height_cm + ' cm' : null);
+  set('p-weight', p.weight_kg ? p.weight_kg + ' kg' : null);
+  if (p.height_cm && p.weight_kg) {
+    const bmi = (p.weight_kg / ((p.height_cm / 100) ** 2)).toFixed(1);
+    set('p-bmi', bmi + ' kg/m²');
+  } else { set('p-bmi', '—'); }
+
+  // Latest reading
+  let r = null;
+  try { r = await (await import('./db.js')).getLatestReading(patientId); } catch(e) {}
+  set('p-hr',      r?.heart_rate  != null ? r.heart_rate + ' bpm' : null);
+  set('p-spo2',    r?.spo2        != null ? r.spo2 + '%'          : null);
+  set('p-temp',    r?.temperature != null ? r.temperature + ' °C' : null);
+  set('p-fall',    r?.fall_detected ? '⚠ Sim' : r ? 'Não' : null);
+  set('p-readtime', r ? new Date(r.created_at).toLocaleString('pt-PT') : null);
+
+  // Status badge
+  const status = getStatus(r);
+  const badge = document.getElementById('perfil-badge');
+  if (badge) {
+    badge.textContent = status === 'normal' ? 'Normal' : status === 'atencao' ? 'Atenção' : status === 'alerta' ? 'Alerta' : 'Sem dados';
+    badge.className = `badge badge-${status === 'normal' ? 'ok' : status === 'atencao' ? 'warn' : 'alert'}`;
+  }
+
+  // Back button
+  document.getElementById('perfil-back')?.addEventListener('click', () => goTo('registos'), { once: true });
+
+  goTo('perfil');
+};
